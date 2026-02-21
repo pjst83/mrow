@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>NovaNotes</title>
+
+<style>
+:root {
+  --bg-glass: rgba(0,0,0,0.25);
+  --text-color: white;
+  --editor-bg: rgba(0,0,0,0.2);
+  --sidebar-bg: rgba(0,0,0,0.25);
+}
+
+body.light {
+  --bg-glass: rgba(255,255,255,0.35);
+  --text-color: black;
+  --editor-bg: rgba(255,255,255,0.3);
+  --sidebar-bg: rgba(255,255,255,0.35);
+  background: #f4f7ff;
+}
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  font-family: system-ui, sans-serif;
+}
+
+body {
+  height: 100vh;
+  overflow: hidden;
+  background: black;
+  color: var(--text-color);
+}
+
+#rippleCanvas {
+  position: fixed;
+  z-index: -1;
+  pointer-events: none;
+}
+
+header {
+  height: 70px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 25px;
+  backdrop-filter: blur(18px);
+  background: var(--bg-glass);
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+.left-header {
+  display: flex;
+  align-items: center;
+}
+
+.brand {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.header-actions button {
+  margin-left: 10px;
+  padding: 8px 14px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.main {
+  display: flex;
+  height: calc(100vh - 70px);
+}
+
+.sidebar {
+  width: 260px;
+  padding: 20px;
+  background: var(--sidebar-bg);
+  backdrop-filter: blur(18px);
+  border-right: 1px solid rgba(255,255,255,0.1);
+  overflow-y: auto;
+}
+
+.sidebar button {
+  width: 100%;
+  padding: 10px;
+  margin-bottom: 15px;
+  border-radius: 8px;
+  border: none;
+  cursor: pointer;
+}
+
+.note-tab {
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 8px;
+  background: rgba(255,255,255,0.1);
+  cursor: pointer;
+}
+
+.note-tab.active {
+  background: white;
+  color: black;
+}
+
+.editor-wrapper {
+  flex: 1;
+  padding: 40px;
+  backdrop-filter: blur(40px);
+  position: relative;
+}
+
+textarea {
+  width: 100%;
+  height: 100%;
+  border-radius: 12px;
+  padding: 25px;
+  font-size: 1rem;
+  line-height: 1.6;
+  background: var(--editor-bg);
+  color: var(--text-color);
+  border: none;
+  outline: none;
+  resize: none;
+}
+</style>
+</head>
+
+<body>
+
+<canvas id="rippleCanvas"></canvas>
+
+<header>
+  <div class="left-header">
+    <div class="brand">NotePuddle.</div>
+  </div>
+  <div class="header-actions">
+    <button onclick="toggleTheme()">Lightswitch</button>
+    <button onclick="downloadNote()">Download</button>
+  </div>
+</header>
+
+<div class="main">
+  <div class="sidebar">
+    <button onclick="addNote()">+ New Note</button>
+    <div id="noteList"></div>
+  </div>
+
+  <div class="editor-wrapper" id="editorWrapper">
+    <textarea id="editor" placeholder="Start writing..."></textarea>
+  </div>
+</div>
+
+<script>
+let notes = JSON.parse(localStorage.getItem("novaNotes")) || [
+  { title: "Note 1", content: "" }
+];
+
+let currentIndex = 0;
+const editor = document.getElementById("editor");
+const noteList = document.getElementById("noteList");
+
+function renderNotes() {
+  noteList.innerHTML = "";
+  notes.forEach((note, index) => {
+    const tab = document.createElement("div");
+    tab.className = "note-tab" + (index === currentIndex ? " active" : "");
+    tab.textContent = note.title;
+    tab.onclick = () => switchNote(index);
+    noteList.appendChild(tab);
+  });
+}
+
+function switchNote(index) {
+  saveCurrentNote();
+  currentIndex = index;
+  editor.value = notes[index].content;
+  renderNotes();
+}
+
+function saveCurrentNote() {
+  notes[currentIndex].content = editor.value;
+  localStorage.setItem("novaNotes", JSON.stringify(notes));
+}
+
+editor.addEventListener("input", saveCurrentNote);
+
+function addNote() {
+  saveCurrentNote();
+  notes.push({ title: "Note " + (notes.length + 1), content: "" });
+  currentIndex = notes.length - 1;
+  editor.value = "";
+  renderNotes();
+  saveCurrentNote();
+}
+
+function downloadNote() {
+  const blob = new Blob([editor.value], { type: "text/plain" });
+  const link = document.createElement("a");
+  link.href = URL.createObjectURL(blob);
+  link.download = notes[currentIndex].title + ".txt";
+  link.click();
+}
+
+function toggleTheme() {
+  document.body.classList.toggle("light");
+}
+
+editor.value = notes[currentIndex].content;
+renderNotes();
+
+const rippleCanvas = document.getElementById("rippleCanvas");
+const rippleCtx = rippleCanvas.getContext("2d");
+const editorWrapper = document.getElementById("editorWrapper");
+
+function resizeRipple() {
+  const rect = editorWrapper.getBoundingClientRect();
+  rippleCanvas.width = rect.width;
+  rippleCanvas.height = rect.height;
+  rippleCanvas.style.left = rect.left + "px";
+  rippleCanvas.style.top = rect.top + "px";
+}
+resizeRipple();
+addEventListener("resize", resizeRipple);
+
+let ripples = [];
+
+editorWrapper.addEventListener("mousemove", e => {
+  const rect = rippleCanvas.getBoundingClientRect();
+  ripples.push({
+    x: e.clientX - rect.left,
+    y: e.clientY - rect.top,
+    radius: 0,
+    alpha: 0.4
+  });
+});
+
+function drawRipples() {
+  rippleCtx.clearRect(0,0,rippleCanvas.width,rippleCanvas.height);
+
+  ripples.forEach((r, i) => {
+    rippleCtx.beginPath();
+    rippleCtx.arc(r.x, r.y, r.radius, 0, Math.PI * 2);
+    rippleCtx.strokeStyle = `rgba(255,255,255,${r.alpha})`;
+    rippleCtx.lineWidth = 2;
+    rippleCtx.stroke();
+
+    r.radius += 2;
+    r.alpha *= 0.96;
+
+    if (r.alpha < 0.02) ripples.splice(i, 1);
+  });
+
+  requestAnimationFrame(drawRipples);
+}
+
+drawRipples();
+</script>
+
+</body>
+</html>
